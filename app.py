@@ -5,7 +5,10 @@ Then open http://localhost:5000
 """
 
 import os
+import time
 import logging
+import threading
+import requests as req_lib
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from groq import Groq
@@ -16,11 +19,32 @@ load_dotenv()
 for lib in ("httpx", "httpcore", "groq"):
     logging.getLogger(lib).setLevel(logging.ERROR)
 
+START_TIME = time.time()
+APP_VERSION = "1.2.0"
+
 app = Flask(__name__)
 CORS(app)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
 client = Groq(api_key=GROQ_API_KEY)
+
+RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "").strip()
+
+
+def _keep_alive():
+    """Ping own health endpoint every 14 min to prevent Render free-tier spin-down."""
+    if not RENDER_URL:
+        return  # Only runs in production where RENDER_EXTERNAL_URL is set
+    time.sleep(30)  # Wait for server to fully start first
+    while True:
+        try:
+            req_lib.get(f"{RENDER_URL}/api/health", timeout=10)
+        except Exception:
+            pass
+        time.sleep(14 * 60)  # ping every 14 minutes
+
+
+threading.Thread(target=_keep_alive, daemon=True).start()
 
 
 @app.route("/")
@@ -30,7 +54,29 @@ def index():
 
 @app.route("/api/health")
 def health():
-    return jsonify({"status": "ok", "api_key_set": bool(GROQ_API_KEY)})
+    uptime_seconds = int(time.time() - START_TIME)
+    hours, remainder = divmod(uptime_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    # Check optional dependencies availability
+    deps = {}
+    try:
+        from pydub import AudioSegment  # noqa: F401
+        from pydub.silence import split_on_silence  # noqa: F401
+        deps["pydub"] = "ok"
+    except ImportError:
+        deps["pydub"] = "missing"
+
+    overall = "ok" if bool(GROQ_API_KEY) and deps["pydub"] == "ok" else "degraded"
+
+    return jsonify({
+        "status": overall,
+        "version": APP_VERSION,
+        "uptime": f"{hours:02d}h {minutes:02d}m {seconds:02d}s",
+        "uptime_seconds": uptime_seconds,
+        "api_key_set": bool(GROQ_API_KEY),
+        "dependencies": deps,
+    }), 200 if overall == "ok" else 503
 
 
 @app.route("/api/transcribe", methods=["POST"])
