@@ -50,6 +50,7 @@ def transcribe():
         ext = "webm"
 
     from pydub import AudioSegment
+    from pydub.silence import split_on_silence
     import io
 
     # Load into Pydub for high-accuracy preprocessing (normalizing + resampling)
@@ -61,10 +62,27 @@ def transcribe():
         segment = segment.set_frame_rate(16000).set_channels(1)
         # Normalize to prevent transcription issues with low/high volume
         normalized_segment = segment.normalize()
-        
+
+        # --- Frequency Bandpass Filtering (isolate human voice: 300Hz–3400Hz) ---
+        # High-pass removes low-frequency rumble, table thumps, AC hum, wind
+        filtered_segment = normalized_segment.high_pass_filter(300)
+        # Low-pass removes high-frequency hiss, electronic static, sibilance artifacts
+        filtered_segment = filtered_segment.low_pass_filter(3400)
+
+        # --- Silence Stripping (prevents Whisper hallucinations on quiet gaps) ---
+        chunks = split_on_silence(
+            filtered_segment,
+            min_silence_len=500,   # treat 500ms+ of quiet as silence
+            silence_thresh=-40,    # silence threshold in dBFS
+            keep_silence=200       # retain 200ms padding so words don't run together
+        )
+        # Re-join speech chunks; fall back to full filtered segment if no split found
+        if chunks:
+            filtered_segment = sum(chunks)
+
         # Export precisely as FLAC (lossless) for maximum Groq accuracy
         out_io = io.BytesIO()
-        normalized_segment.export(out_io, format="flac")
+        filtered_segment.export(out_io, format="flac")
         processed_audio_bytes = out_io.getvalue()
         processed_content_type = "audio/flac"
         processed_ext = "flac"
@@ -112,18 +130,24 @@ def summarize():
                 {
                     "role": "system",
                     "content": (
-                        "You are a meticulous AI summarizer focusing on high accuracy. "
-                        "When analyzing the transcript: "
-                        "1. Consider that speakers have an Indian accent for context, but DO NOT mention the accent in your output. "
-                        "2. Ignore background noise or hallucinated artifacts. "
-                        "3. Meticulously analyze Indian naming conventions; if someone says 'my name is', treat the next term as a name and spell it correctly. "
-                        "4. Provide a clear, structured summary in bullet points (•). "
-                        "Accuracy is the top priority."
+                        "You are a meticulous AI transcription corrector and summarizer. "
+                        "Follow these steps in order:\n"
+                        "1. CORRECT: Silently fix obvious phonetic/STT errors based on context "
+                        "(e.g., 'going true the store' → 'going through the store', "
+                        "'there' vs 'their' vs 'they're'). Do NOT output the corrected text, just use it internally.\n"
+                        "2. NAMES: Speakers may have an Indian accent. If someone says 'my name is', "
+                        "treat the next word(s) as a proper name and retain the most phonetically "
+                        "accurate Indian spelling (e.g., Yash, Diya, Arjun, Priya). "
+                        "DO NOT mention the accent in your output.\n"
+                        "3. FILTER: Discard any hallucinated audio artifacts, repeated filler words, "
+                        "or background noise transcriptions (e.g., '[MUSIC]', 'um', 'uh', lone syllables).\n"
+                        "4. SUMMARIZE: Provide a concise, structured summary in bullet points (•). "
+                        "Each bullet should capture one clear idea. Accuracy is the top priority."
                     ),
                 },
                 {"role": "user", "content": f"Summarise:\n\n{transcript}"},
             ],
-            temperature=0.3,
+            temperature=0.2,
             max_tokens=400,
         )
         return jsonify({"summary": rsp.choices[0].message.content.strip()})
