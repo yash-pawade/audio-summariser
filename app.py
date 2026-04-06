@@ -50,13 +50,21 @@ def transcribe():
         ext = "webm"
 
     clean_content_type = f"audio/{ext}"
+    prompt_text = request.form.get("prompt", "").strip()
+    
+    kwargs = {
+        "file": (f"chunk.{ext}", audio_bytes, clean_content_type),
+        "model": "whisper-large-v3-turbo",
+        "response_format": "text",
+        "language": "en"
+    }
+    
+    if prompt_text:
+        # Keep prompt under a reasonable limit to prevent context cutoff
+        kwargs["prompt"] = prompt_text[-500:]
+
     try:
-        rsp = client.audio.transcriptions.create(
-            file=(f"chunk.{ext}", audio_bytes, clean_content_type),
-            model="whisper-large-v3-turbo",
-            response_format="text",
-            language="en",
-        )
+        rsp = client.audio.transcriptions.create(**kwargs)
         text = (rsp if isinstance(rsp, str) else str(rsp)).strip()
         return jsonify({"transcript": text})
     except Exception as exc:

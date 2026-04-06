@@ -212,6 +212,12 @@ function cycleRecorder() {
     const formData = new FormData();
     formData.append('audio', blob, 'chunk.webm');
     
+    // Provide recent transcript + common tech keywords as context
+    let contextPrompt = "AI developer, artificial intelligence, technology. " + transcriptAccumulated;
+    // Keep it short enough for the prompt limit
+    if (contextPrompt.length > 300) contextPrompt = contextPrompt.slice(-300);
+    formData.append('prompt', contextPrompt);
+    
     try {
       const res = await fetch('/api/transcribe', { method: 'POST', body: formData });
       const data = await res.json();
