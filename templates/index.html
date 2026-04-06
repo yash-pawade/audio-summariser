@@ -212,8 +212,8 @@ function cycleRecorder() {
     const formData = new FormData();
     formData.append('audio', blob, 'chunk.webm');
     
-    // Provide recent transcript + common tech keywords as context
-    let contextPrompt = "AI developer, artificial intelligence, technology. " + transcriptAccumulated;
+    // Provide only recent transcript as context
+    let contextPrompt = transcriptAccumulated;
     // Keep it short enough for the prompt limit
     if (contextPrompt.length > 300) contextPrompt = contextPrompt.slice(-300);
     formData.append('prompt', contextPrompt);
