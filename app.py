@@ -49,7 +49,31 @@ def transcribe():
     if ext not in ("webm", "mp4", "ogg", "wav", "mp3"):
         ext = "webm"
 
-    clean_content_type = f"audio/{ext}"
+    from pydub import AudioSegment
+    import io
+
+    # Load into Pydub for high-accuracy preprocessing (normalizing + resampling)
+    try:
+        audio_io = io.BytesIO(audio_bytes)
+        segment = AudioSegment.from_file(audio_io)
+        
+        # Optimize for Whisper: 16kHz, Mono, Normalized
+        segment = segment.set_frame_rate(16000).set_channels(1)
+        # Normalize to prevent transcription issues with low/high volume
+        normalized_segment = segment.normalize()
+        
+        # Export precisely as FLAC (lossless) for maximum Groq accuracy
+        out_io = io.BytesIO()
+        normalized_segment.export(out_io, format="flac")
+        processed_audio_bytes = out_io.getvalue()
+        processed_content_type = "audio/flac"
+        processed_ext = "flac"
+    except Exception as e:
+        print(f"Pydub Error (falling back to raw): {e}")
+        processed_audio_bytes = audio_bytes
+        processed_content_type = f"audio/{ext}"
+        processed_ext = ext
+
     prompt_text = request.form.get("prompt", "").strip()
     
     # Hardcoded context for Whisper STT (Indian context + naming focus)
@@ -57,7 +81,7 @@ def transcribe():
     full_prompt = base_prompt + prompt_text
     
     kwargs = {
-        "file": (f"chunk.{ext}", audio_bytes, clean_content_type),
+        "file": (f"chunk.{processed_ext}", processed_audio_bytes, processed_content_type),
         "model": "whisper-large-v3-turbo",
         "response_format": "text",
         "language": "en",
