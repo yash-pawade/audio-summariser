@@ -52,16 +52,17 @@ def transcribe():
     clean_content_type = f"audio/{ext}"
     prompt_text = request.form.get("prompt", "").strip()
     
+    # Hardcoded base context for Whisper STT
+    base_prompt = "Indian English accent. Ignore background noise and focus purely on speech. Correctly identify names after phrases like 'my name is'. Accuracy is top priority. "
+    full_prompt = base_prompt + prompt_text
+    
     kwargs = {
         "file": (f"chunk.{ext}", audio_bytes, clean_content_type),
         "model": "whisper-large-v3-turbo",
         "response_format": "text",
-        "language": "en"
+        "language": "en",
+        "prompt": full_prompt[-500:] # Whisper prompt limit
     }
-    
-    if prompt_text:
-        # Keep prompt under a reasonable limit to prevent context cutoff
-        kwargs["prompt"] = prompt_text[-500:]
 
     try:
         rsp = client.audio.transcriptions.create(**kwargs)
@@ -87,9 +88,13 @@ def summarize():
                 {
                     "role": "system",
                     "content": (
-                        "You are a precise summarisation assistant. "
-                        "Given an audio transcript, return a structured summary using bullet points (•). "
-                        "Highlight key topics, decisions, and action items. Keep it under 200 words."
+                        "You are a meticulous AI summarizer focusing on high accuracy. "
+                        "When analyzing the transcript: "
+                        "1. Focus strictly on speakers with Indian accents. "
+                        "2. Ignore background noise or hallucinated artifacts from audio artifacts. "
+                        "3. If someone says 'my name is', treat the following term as a name and analyze it properly. "
+                        "4. Provide a clear, structured summary in bullet points (•) highlighting key topics and action items. "
+                        "Maximum accuracy is required."
                     ),
                 },
                 {"role": "user", "content": f"Summarise:\n\n{transcript}"},
