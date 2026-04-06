@@ -99,14 +99,7 @@
 
 <nav>
   <div class="brand">🎙 Real-Time Summarizer</div>
-  <div style="display: flex; align-items: center; gap: 8px;">
-    <select id="accentSel" class="chunk-select" style="margin-left: 10px;">
-      <option value="en-US">US Accent</option>
-      <option value="en-IN" selected>Indian Accent</option>
-    </select>
-    <input type="text" id="userName" placeholder="Your Name (Optional)" class="chunk-select" style="margin-left: 10px; width: 140px;">
-    <div class="status-pill" id="pill"><div class="dot"></div><span id="pillText">Ready</span></div>
-  </div>
+  <div class="status-pill" id="pill"><div class="dot"></div><span id="pillText">Ready</span></div>
 </nav>
 
 <div class="main">
@@ -219,14 +212,8 @@ function cycleRecorder() {
     const formData = new FormData();
     formData.append('audio', blob, 'chunk.webm');
     
-    // Provide context: Name + Accent hint + recent transcript
-    const name = document.getElementById('userName').value.trim();
-    const isIndian = document.getElementById('accentSel').value === 'en-IN';
-    
-    let contextPrompt = "";
-    if (name) contextPrompt += `User name is ${name}. `;
-    if (isIndian) contextPrompt += "Indian English accent. ";
-    contextPrompt += transcriptAccumulated;
+    // Provide constant Indian Accent hint + recent transcript
+    let contextPrompt = "Indian English accent. " + transcriptAccumulated;
 
     // Keep it short enough for the prompt limit
     if (contextPrompt.length > 400) contextPrompt = contextPrompt.slice(-400);
