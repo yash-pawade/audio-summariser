@@ -52,8 +52,8 @@ def transcribe():
     clean_content_type = f"audio/{ext}"
     prompt_text = request.form.get("prompt", "").strip()
     
-    # Hardcoded base context for Whisper STT
-    base_prompt = "Indian English accent. Ignore background noise and focus purely on speech. Correctly identify names after phrases like 'my name is'. Accuracy is top priority. "
+    # Hardcoded context for Whisper STT (Indian context + naming focus)
+    base_prompt = "Indian English accent. Focus on Indian naming conventions. Ignore background noise and focus purely on speech accurately. Correctly identify names after phrases like 'my name is'. "
     full_prompt = base_prompt + prompt_text
     
     kwargs = {
@@ -90,11 +90,11 @@ def summarize():
                     "content": (
                         "You are a meticulous AI summarizer focusing on high accuracy. "
                         "When analyzing the transcript: "
-                        "1. Focus strictly on speakers with Indian accents. "
-                        "2. Ignore background noise or hallucinated artifacts from audio artifacts. "
-                        "3. If someone says 'my name is', treat the following term as a name and analyze it properly. "
-                        "4. Provide a clear, structured summary in bullet points (•) highlighting key topics and action items. "
-                        "Maximum accuracy is required."
+                        "1. Consider that speakers have an Indian accent for context, but DO NOT mention the accent in your output. "
+                        "2. Ignore background noise or hallucinated artifacts. "
+                        "3. Meticulously analyze Indian naming conventions; if someone says 'my name is', treat the next term as a name and spell it correctly. "
+                        "4. Provide a clear, structured summary in bullet points (•). "
+                        "Accuracy is the top priority."
                     ),
                 },
                 {"role": "user", "content": f"Summarise:\n\n{transcript}"},
