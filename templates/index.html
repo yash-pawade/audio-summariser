@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Real-Time Mic Summarizer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #07070e; --bg2: #0d0d1a;
+      --surface: rgba(255,255,255,0.04);
+      --border: rgba(255,255,255,0.08);
+      --purple: #7c3aed; --cyan: #06b6d4; --red: #ef4444;
+      --t1: #f1f5f9; --t2: #94a3b8; --t3: #475569;
+    }
+    html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--bg); color: var(--t1); }
+    body { display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; }
+    
+    body::before {
+      content: ''; position: fixed; inset: 0;
+      background: radial-gradient(ellipse 70% 55% at 15% 0%, rgba(124,58,237,.10) 0%, transparent 60%);
+      pointer-events: none; z-index: 0;
+    }
+
+    nav {
+      position: sticky; top: 0; z-index: 10; padding: 16px 26px; border-bottom: 1px solid var(--border);
+      background: rgba(7,7,14,.85); backdrop-filter: blur(14px); display: flex; align-items: center; justify-content: space-between;
+    }
+    .brand { font-size: 17px; font-weight: 700; background: linear-gradient(130deg, #a855f7, var(--cyan)); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    
+    .status-pill {
+      padding: 5px 13px; border-radius: 100px; border: 1px solid var(--border); background: var(--surface);
+      font-size: 12px; font-weight: 500; color: var(--t2); display: flex; align-items: center; gap: 7px;
+    }
+    .status-pill.rec { border-color: rgba(239,68,68,.4); background: rgba(239,68,68,.1); color: #f87171; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--t3); }
+    .status-pill.rec .dot { background: var(--red); animation: blink 1s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    .main { flex: 1; display: flex; flex-direction: column; position: relative; z-index: 1; max-width: 900px; margin: 0 auto; width: 100%; padding: 0 20px 40px; }
+
+    /* Mic Section */
+    .mic-section { display: flex; flex-direction: column; align-items: center; padding: 40px 0 20px; gap: 15px; }
+
+    .mic-wrap { position: relative; width: 90px; height: 90px; display: flex; align-items: center; justify-content: center; }
+    .ring { position: absolute; border-radius: 50%; border: 2px solid var(--red); opacity: 0; }
+    .mic-wrap.rec .ring:nth-child(1) { width: 100px; height: 100px; animation: pulse 2s infinite 0s; }
+    .mic-wrap.rec .ring:nth-child(2) { width: 120px; height: 120px; animation: pulse 2s infinite .5s; }
+    @keyframes pulse { 0% { transform: scale(.8); opacity: .6; } 100% { transform: scale(1.5); opacity: 0; } }
+
+    #micBtn {
+      position: relative; z-index: 5; width: 70px; height: 70px; border-radius: 50%; border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, var(--purple), #5b21b6); box-shadow: 0 0 30px rgba(124,58,237,.4);
+      transition: all .3s; outline: none;
+    }
+    #micBtn:hover { transform: scale(1.05); }
+    #micBtn.rec { background: linear-gradient(135deg, var(--red), #b91c1c); box-shadow: 0 0 40px rgba(239,68,68,.5); }
+    #micBtn svg { width: 26px; height: 26px; }
+    #micBtn.rec .ic-mic { display: none; }
+    #micBtn:not(.rec) .ic-stop { display: none; }
+
+    .wave-wrap { width: 100%; max-width: 320px; height: 35px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid var(--border); overflow: hidden; opacity: 0; transition: opacity 0.3s; }
+    .wave-wrap.active { opacity: 1; }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    #hint { font-size: 13px; color: var(--t3); letter-spacing: 0.5px; }
+
+    /* Live Transcript */
+    .transcript-container {
+      width: 100%; min-height: 80px; padding: 20px 0 40px;
+      font-size: 20px; line-height: 1.6; color: var(--t1);
+      text-align: center;
+    }
+    .transcript-intro { color: var(--t3); font-style: italic; font-size: 16px; }
+    .final-text { color: var(--t1); margin-right: 4px; }
+    #liveText { color: var(--t2); font-style: italic; display: inline-block; animation: pulseOpacity 1.5s infinite; }
+    @keyframes pulseOpacity { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.9; } }
+    .hidden { display: none !important; }
+
+    /* Summary Panel - 100% Width */
+    .summary-panel {
+      width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      overflow: hidden; backdrop-filter: blur(8px); margin-top: auto;
+    }
+    .s-head { padding: 14px 20px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px;}
+    .s-body { padding: 25px 20px; font-size: 15px; line-height: 1.7; color: var(--t1); min-height: 120px; display: flex; flex-direction: column; justify-content: center; }
+    
+    .empty-state { text-align: center; color: var(--t3); font-size: 14px; }
+    .summary-text { white-space: pre-wrap; }
+    .loader { display: inline-block; width: 18px; height: 18px; border: 2px solid transparent; border-top-color: var(--cyan); border-radius: 50%; animation: spin .8s linear infinite; }
+    .loader-wrap { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--cyan); font-weight: 500; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="brand">🎙 Real-Time Summarizer</div>
+  <div class="status-pill" id="pill"><div class="dot"></div><span id="pillText">Ready</span></div>
+</nav>
+
+<div class="main">
+  
+  <!-- MIC & WAVEFORM -->
+  <div class="mic-section">
+    <div class="mic-wrap" id="micWrap">
+      <div class="ring"></div><div class="ring"></div>
+      <button id="micBtn">
+        <svg class="ic-mic" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        <svg class="ic-stop" viewBox="0 0 24 24" fill="white"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      </button>
+    </div>
+    <div class="wave-wrap" id="waveWrap"><canvas id="canvas"></canvas></div>
+    <div id="hint">Click to start live transcription</div>
+  </div>
+
+  <!-- LIVE TRANSCRIPT TEXT (NO BOX) -->
+  <div class="transcript-container" id="transcriptContainer">
+    <div class="transcript-intro" id="tIntro">Your transcript will appear here as you speak...</div>
+    <span id="finalTextSpan"></span>
+    <span id="liveText"></span>
+  </div>
+
+  <!-- SUMMARY BOX (100% WIDTH BELOW) -->
+  <div class="summary-panel" id="summaryPanel">
+    <div class="s-head">
+      ✨ Final Summary
+    </div>
+    <div class="s-body">
+      <div class="empty-state" id="sEmpty">Summary will generate after you click the stop button</div>
+      <div class="loader-wrap hidden" id="summaryLoader">
+        <span class="loader"></span> Generating summary...
+      </div>
+      <div class="summary-text hidden" id="summaryText"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let stream, audioCtx, analyser, rafId, captureTimeout;
+let recording = false;
+let transcriptAccumulated = "";
+let currentRecorder = null;
+
+// DOM
+const micBtn = document.getElementById('micBtn');
+const micWrap = document.getElementById('micWrap');
+const waveWrap = document.getElementById('waveWrap');
+const pill = document.getElementById('pillText');
+const hint = document.getElementById('hint');
+
+const tIntro = document.getElementById('tIntro');
+const finalTextSpan = document.getElementById('finalTextSpan');
+const liveText = document.getElementById('liveText');
+
+const sEmpty = document.getElementById('sEmpty');
+const summaryText = document.getElementById('summaryText');
+const summaryLoader = document.getElementById('summaryLoader');
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+function initCanvas() {
+  canvas.width = canvas.offsetWidth * devicePixelRatio;
+  canvas.height = canvas.offsetHeight * devicePixelRatio;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  for (let i=0; i<40; i++) ctx.fillRect(i*(canvas.width/40)+1, canvas.height/2-2, canvas.width/40-2, 4);
+}
+initCanvas();
+window.onresize = initCanvas;
+
+function drawWave() {
+  if (!analyser) return;
+  const freq = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(freq);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const N = 40; const step = Math.floor(freq.length / N);
+  for (let i = 0; i < N; i++) {
+    const v = freq[i * step] / 255;
+    const h = Math.max(4, v * canvas.height * 0.8);
+    ctx.fillStyle = `rgba(124, 58, 237, ${0.4 + v})`;
+    ctx.fillRect(i * (canvas.width / N) + 1, (canvas.height - h) / 2, canvas.width / N - 2, h);
+  }
+  rafId = requestAnimationFrame(drawWave);
+}
+
+// Overlapping Cycler
+function cycleRecorder() {
+  if (!recording) return;
+
+  const newRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+  const chunks = [];
+  newRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+  newRecorder.onstop = async () => {
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    if (blob.size < 500) return;
+    
+    liveText.textContent = " ••• "; 
+    const formData = new FormData();
+    formData.append('audio', blob, 'chunk.webm');
+    
+    try {
+      const res = await fetch('/api/transcribe', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.transcript) {
+        transcriptAccumulated += data.transcript + " ";
+        const span = document.createElement('span');
+        span.className = 'final-text';
+        span.textContent = data.transcript + " ";
+        span.style.opacity = '0';
+        finalTextSpan.appendChild(span);
+        setTimeout(() => span.style.opacity = '1', 50);
+        span.style.transition = 'opacity 0.3s ease-in';
+      }
+    } catch (err) { console.error(err); }
+    liveText.textContent = ""; 
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  };
+
+  newRecorder.start();
+  
+  if (currentRecorder && currentRecorder.state === 'recording') {
+    currentRecorder.stop();
+  }
+  currentRecorder = newRecorder;
+  
+  captureTimeout = setTimeout(cycleRecorder, 3800); // 3.8s chunks
+}
+
+micBtn.onclick = () => recording ? stopRec() : startRec();
+
+async function startRec() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true } });
+  } catch (err) { alert("Mic required!"); return; }
+
+  audioCtx = new AudioContext(); analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 128; audioCtx.createMediaStreamSource(stream).connect(analyser);
+  
+  recording = true; transcriptAccumulated = "";
+  finalTextSpan.innerHTML = ""; liveText.textContent = "";
+  
+  tIntro.classList.add('hidden');
+  sEmpty.classList.remove('hidden');
+  summaryText.classList.add('hidden'); 
+  summaryText.textContent = "";
+
+  micBtn.classList.add('rec'); micWrap.classList.add('rec');
+  waveWrap.classList.add('active');
+  pill.textContent = 'Listening...';
+  document.getElementById('pill').classList.add('rec');
+  hint.textContent = 'Click to stop and generate summary';
+  
+  drawWave();
+  cycleRecorder();
+}
+
+async function stopRec() {
+  recording = false;
+  clearTimeout(captureTimeout);
+  if(currentRecorder && currentRecorder.state === "recording") currentRecorder.stop();
+  setTimeout(() => stream.getTracks().forEach(t => t.stop()), 500); 
+  cancelAnimationFrame(rafId); initCanvas();
+  
+  micBtn.classList.remove('rec'); micWrap.classList.remove('rec');
+  waveWrap.classList.remove('active');
+  pill.textContent = 'Ready'; document.getElementById('pill').classList.remove('rec');
+  hint.textContent = 'Click to start live transcription';
+  liveText.textContent = "";
+
+  if(transcriptAccumulated.trim().length > 0) {
+    sEmpty.classList.add('hidden');
+    summaryLoader.classList.remove('hidden');
+    
+    try {
+      const res = await fetch('/api/summarize', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: transcriptAccumulated })
+      });
+      const data = await res.json();
+      summaryLoader.classList.add('hidden');
+      summaryText.classList.remove('hidden');
+      if(data.summary) {
+        summaryText.innerHTML = data.summary.replace(/•/g, '<span style="color:var(--cyan)">•</span>');
+      } else {
+        summaryText.textContent = "Summary could not be generated.";
+      }
+    } catch (err) {
+      summaryLoader.classList.add('hidden');
+      summaryText.classList.remove('hidden');
+      summaryText.textContent = "Error generating summary.";
+    }
+  } else {
+    tIntro.classList.remove('hidden');
+  }
+}
+</script>
+</body>
+</html>
