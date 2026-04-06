@@ -145,6 +145,7 @@ let stream, audioCtx, analyser, rafId, captureTimeout;
 let recording = false;
 let transcriptAccumulated = "";
 let currentRecorder = null;
+let chunkIndex = 0;
 
 // DOM
 const micBtn = document.getElementById('micBtn');
@@ -189,6 +190,13 @@ function drawWave() {
   rafId = requestAnimationFrame(drawWave);
 }
 
+// Escalating dynamic durations (1s -> 3s -> 5s continuous)
+function getChunkDuration() {
+  if (chunkIndex === 0) return 1000;
+  if (chunkIndex === 1) return 3000;
+  return 5000;
+}
+
 // Overlapping Cycler
 function cycleRecorder() {
   if (!recording) return;
@@ -229,7 +237,9 @@ function cycleRecorder() {
   }
   currentRecorder = newRecorder;
   
-  captureTimeout = setTimeout(cycleRecorder, 3800); // 3.8s chunks
+  const duration = getChunkDuration();
+  chunkIndex++;
+  captureTimeout = setTimeout(cycleRecorder, duration);
 }
 
 micBtn.onclick = () => recording ? stopRec() : startRec();
@@ -244,6 +254,7 @@ async function startRec() {
   
   recording = true; transcriptAccumulated = "";
   finalTextSpan.innerHTML = ""; liveText.textContent = "";
+  chunkIndex = 0;
   
   tIntro.classList.add('hidden');
   sEmpty.classList.remove('hidden');
