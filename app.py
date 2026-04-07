@@ -41,7 +41,7 @@ def _keep_alive():
             req_lib.get(f"{RENDER_URL}/api/health", timeout=10)
         except Exception:
             pass
-        time.sleep(14 * 60)  # ping every 14 minutes
+        time.sleep(10* 60)  # ping every 10 minutes
 
 
 threading.Thread(target=_keep_alive, daemon=True).start()
@@ -61,8 +61,8 @@ def health():
     # Check optional dependencies availability
     deps = {}
     try:
-        from pydub import AudioSegment  # noqa: F401
-        from pydub.silence import split_on_silence  # noqa: F401
+        from pydub import AudioSegment  
+        from pydub.silence import split_on_silence  
         deps["pydub"] = "ok"
     except ImportError:
         deps["pydub"] = "missing"
